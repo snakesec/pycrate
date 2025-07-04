@@ -1818,6 +1818,19 @@ def _test_rt_base():
     assert( U8s01._val == u'ambiguïté' )
     U8s01.from_coer_ws(b'\x0bambigu\xc3\xaft\xc3\xa9')
     assert( U8s01._val == u'ambiguïté' )
+    # additional PER tests
+    U8s02 = Mod['U8s02']
+    U8s02.from_asn1('"βββ"')
+    assert( U8s02.to_uper() == U8s02.to_uper_ws() == b'\x06\xce\xb2\xce\xb2\xce\xb2' )
+    assert( U8s02.to_aper() == U8s02.to_aper_ws() == b'\x06\xce\xb2\xce\xb2\xce\xb2' )
+    U8s02.from_uper(b'\x06\xce\xb2\xce\xb2\xce\xb2')
+    assert( U8s02._val == 'βββ' )
+    U8s02.from_uper_ws(b'\x06\xce\xb2\xce\xb2\xce\xb2')
+    assert( U8s02._val == 'βββ' )
+    U8s02.from_aper(b'\x06\xce\xb2\xce\xb2\xce\xb2')
+    assert( U8s02._val == 'βββ' )
+    U8s02.from_aper_ws(b'\x06\xce\xb2\xce\xb2\xce\xb2')
+    assert( U8s02._val == 'βββ' )
     
     # Uns01 ::= UniversalString
     Uns01 = Mod['Uns01']
@@ -2510,7 +2523,7 @@ def _test_tcap_map_rt():
     assert( len(mvp) == len(mvjp) == 12 )
     assert( mvp[0] == (['begin', 'otid'], b'mS\x07\x02') )
     assert( mvp[5] == (['begin', 'components', 0, 'basicROS', 'invoke', 'opcode', 'local'], 2) )
-    assert( mvp[9] == (['begin', 'components', 0, 'basicROS', 'invoke', 'argument', 'UpdateLocationArg', 'vlr-Capability', 'supportedCamelPhases'], {'phase1'}) )
+    assert( mvp[9] == (['begin', 'components', 0, 'basicROS', 'invoke', 'argument', 'UpdateLocationArg', 'vlr-Capability', 'supportedCamelPhases'], ['phase1']) )
     assert( mvp[11] == (['begin', 'components', 0, 'basicROS', 'invoke', 'argument', 'UpdateLocationArg', 'add-info', 'imeisv'], b"h5a0Q\x86\x84'") )
     #
     imei = M.get_at(mvp[11][0])

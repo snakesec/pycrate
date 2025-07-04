@@ -1,5 +1,1 @@
-#!/bin/bash
-
-source /opt/ANDRAX/PYENV/python3/bin/activate
-
-/opt/ANDRAX/PYENV/python3/bin/python3 /opt/ANDRAX/PYENV/python3/bin/pycrate_showmedia.py "$@"
+/opt/ANDRAX/pipx/venvs/pycrate/bin/pycrate_showmedia

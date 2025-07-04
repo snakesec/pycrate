@@ -210,26 +210,35 @@ class SNSSAI(Envelope):
             if 'MappedHPLMNSST' in val:
                 self[2].set_trans(False)
             if 'MappedHPLMNSD' in val:
+                self[1].set_trans(False)
                 self[3].set_trans(False)
         Envelope.set_val(self, val)
     
     def _from_char(self, char):
         if self.get_trans():
             return
-        l = char.len_bit()
-        if l == 8:
+        if self._blauto is not None:
+            # this is required when this struct is wrapped as L_SNSSAI
+            bl = self._blauto()
+        else:
+            bl = char.len_bit()
+        if bl == 8:
             self[1].set_trans(True)
             self[2].set_trans(True)
             self[3].set_trans(True)
-        elif l == 32:
+        elif bl == 16:
+            self[1].set_trans(True)
+            self[2].set_trans(False)
+            self[3].set_trans(True)
+        elif bl == 32:
             self[1].set_trans(False)
             self[2].set_trans(True)
             self[3].set_trans(True)
-        elif l == 40:
+        elif bl == 40:
             self[1].set_trans(False)
             self[2].set_trans(False)
             self[3].set_trans(True)
-        elif l >= 64:
+        elif bl >= 64:
             self[1].set_trans(False)
             self[2].set_trans(False)
             self[3].set_trans(False)
@@ -1222,7 +1231,13 @@ class FGSID(Envelope):
         elif typ == FGSIDTYPE.SUPI:
             return FGSIDTYPE.SUPI, FGSIDSUPI.to_nai(self)
         elif typ in {FGSIDTYPE.GUTI, FGSIDTYPE.STMSI}:
-            return typ, self[3:].get_val_d()
+            return typ, {
+                'PLMN': self[3].decode(), 
+                'AMFRegionID': self[4].get_val(),
+                'AMFSetID': self[5].get_val(),
+                'AMFPtr': self[6].get_val(),
+                '5GTMSI': self[7].get_val()
+                }
         elif typ in {FGSIDTYPE.IMEI, FGSIDTYPE.IMEISV}:
             return typ, FGSIDDigit.decode(self)
         elif typ == FGSIDTYPE.MAC:
@@ -1297,7 +1312,11 @@ class FGSNetFeat(Envelope):
         Uint('RestrictEC', bl=2),
         Uint('MCSI', bl=1),
         Uint('EMCN3', bl=1), # end of octet 2
-        Uint('spare', bl=5),
+        Uint('spare', bl=1),
+        Uint('PR', bl=1),
+        Uint('RPR', bl=1),
+        Uint('PIV', bl=1),
+        Uint('NCR', bl=1),
         Uint('5G-EHC-CP-CIoT', bl=1),
         Uint('ATS-IND', bl=1),
         Uint('5G-LCS', bl=1), # end of octet 3
@@ -1349,7 +1368,8 @@ _FGSRegResult_dict = {
 class FGSRegResult(Envelope):
     _name = '5GSRegResult'
     _GEN = (
-        Uint('spare', bl=2),
+        Uint('spare', bl=1),
+        Uint('DisasterRoaming', bl=1),
         Uint('Emergency', bl=1),
         Uint('NSSAAPerformed', bl=1),
         Uint('SMSAllowed', bl=1),
@@ -2195,12 +2215,12 @@ class PSAList(Envelope):
 
 
 class SAList(Sequence):
-    _GEN = FGSPTAIList() 
+    _GEN = PSAList() 
     
     def get_tai(self):
         tai = set()
-        for tl in self:
-            tai.update(tl.get_tai())
+        for sl in self:
+            tai.update(sl.get_tai())
         return tai
 
 
@@ -2727,7 +2747,7 @@ class RegistrationWaitRange(Envelope):
 # TS 24.501, 9.11.3.86
 #------------------------------------------------------------------------------#
 
-class CAGInfo(Envelope):
+class ExtCAGInfo(Envelope):
     _GEN = (
         Uint8('Len'),
         PLMN(),
@@ -2752,7 +2772,7 @@ class CAGInfo(Envelope):
 
 
 class ExtCAGInfoList(Sequence):
-    _GEN = CAGInfo()
+    _GEN = ExtCAGInfo()
     
     def decode(self):
         return [caginfo.decode() for caginfo in self._content]
@@ -3266,7 +3286,7 @@ class QoSFlowParam(Envelope):
 class QoSFlow(Envelope):
     _GEN = (
         Uint('spare', bl=2),
-        Uint('QFI', bl=6),
+        Uint('QFI', val=9, bl=6),
         Uint('OpCode', bl=3, dic=_QoSFlowOC_dict),
         Uint('spare', bl=6), # last 5 bit of 2nd octet and 1st bit of 3rd octet
         Uint('E', bl=1),
@@ -3277,6 +3297,7 @@ class QoSFlow(Envelope):
     def __init__(self, *args, **kwargs):
         Envelope.__init__(self, *args, **kwargs)
         self['E'].set_dicauto(lambda: _QoSFlowE_dict[self['OpCode'].get_val()])
+        self['E'].set_valauto(lambda: 1 if self['Params'].get_num() else 0)
         self['Num'].set_valauto(lambda: self['Params'].get_num())
         self['Params'].set_numauto(lambda: self['Num'].get_val())
 
@@ -3330,7 +3351,9 @@ _PktFilterCompType_dict = {
     132 : '802.1Q S-TAG VID type',
     133 : '802.1Q C-TAG PCP/DEI type',
     134 : '802.1Q S-TAG PCP/DEI type',
-    135 : 'Ethertype type'
+    135 : 'Ethertype type',
+    136 : 'Destination MAC address range type',
+    137 : 'Source MAC address range type',
     }
 
 
@@ -3391,6 +3414,13 @@ class _PktFilterPCPDEI(Envelope):
         )
 
 
+class _PktFilterMACRange(Envelope):
+    _GEN = (
+        Buf('MACLow', bl=48, rep=REPR_HEX),
+        Buf('MACHigh', bl=48, rep=REPR_HEX)
+        )
+
+
 class PktFilterComp(Envelope):
     _GEN = (
         Uint8('Type', dic=_PktFilterCompType_dict),
@@ -3414,7 +3444,9 @@ class PktFilterComp(Envelope):
             132 : _PktFilterVID('STagVID'),
             133 : _PktFilterPCPDEI('CTagPCPDEI'),
             134 : _PktFilterPCPDEI('STagPCPDEI'),
-            135 : Uint16('EtherType', dic=EtherType_dict)
+            135 : Uint16('EtherType', dic=EtherType_dict),
+            136 : _PktFilterMACRange('MACRangeDest'),
+            137 : _PktFilterMACRange('MACRangeSrc'),
             },
             DEFAULT=Buf('unk', val=b'', rep=REPR_HEX),
             sel=lambda self: self.get_env()['Type'].get_val())
